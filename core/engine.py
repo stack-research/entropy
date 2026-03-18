@@ -1,7 +1,7 @@
-"""Statistical mechanics engine. Real physics, no approximations."""
+"""Statistical mechanics engine."""
 
 import numpy as np
-from math import lgamma, log
+from math import lgamma, log, sqrt
 
 # Natural units: k_B = 1, m = 1
 K_B = 1.0
@@ -64,10 +64,11 @@ class ParticleSystem:
 
     def step(self):
         """Advance one timestep. Vectorized."""
+        prev_pos = self.pos.copy()
         self.pos += self.vel * self.dt * self.time_direction
         self._reflect_walls()
         if self.collisions:
-            self._resolve_collisions()
+            self._resolve_collisions(prev_pos)
 
     def _reflect_walls(self):
         # X-axis reflection
@@ -88,62 +89,113 @@ class ParticleSystem:
         self.pos[mask_hi, 1] = 2 * self.height - self.pos[mask_hi, 1]
         self.vel[mask_hi, 1] = -self.vel[mask_hi, 1]
 
-    def _resolve_collisions(self):
-        """Elastic 2D collisions via spatial hashing. O(N) average case.
+    def _resolve_collisions(self, prev_pos):
+        """Resolve equal-mass collisions that occur during the last timestep.
 
-        Equal-mass elastic collision: particles exchange velocity components
-        along the line connecting their centers. Preserves total KE and momentum.
+        The detector uses each pair's swept relative motion over the timestep,
+        so head-on impacts are handled when they occur instead of one frame late
+        after particles have already crossed or perfectly overlapped.
         """
         r = self.collision_radius
-        cell_size = r * 2
-        if cell_size <= 0:
+        if r <= 0 or self.n < 2:
             return
 
-        # Build spatial hash: map each particle to a grid cell
-        cx = (self.pos[:, 0] / cell_size).astype(int)
-        cy = (self.pos[:, 1] / cell_size).astype(int)
-
-        grid = {}
-        for i in range(self.n):
-            key = (int(cx[i]), int(cy[i]))
-            if key not in grid:
-                grid[key] = []
-            grid[key].append(i)
-
-        # Check each particle against neighbors in adjacent cells
-        resolved = set()
+        cell_size = max(r * 2.0, 1.0)
         r_sq = r * r
-        for key, particles in grid.items():
-            # Gather candidates from this cell and 8 neighbors
-            neighbors = []
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    nkey = (key[0] + dx, key[1] + dy)
-                    if nkey in grid:
-                        neighbors.extend(grid[nkey])
+        eps = 1e-10
+        displacements = self.pos - prev_pos
+        grid = {}
 
-            for i in particles:
-                for j in neighbors:
-                    if j <= i:
+        for i in range(self.n):
+            min_x = min(prev_pos[i, 0], self.pos[i, 0]) - r
+            max_x = max(prev_pos[i, 0], self.pos[i, 0]) + r
+            min_y = min(prev_pos[i, 1], self.pos[i, 1]) - r
+            max_y = max(prev_pos[i, 1], self.pos[i, 1]) + r
+
+            x0 = int(np.floor(min_x / cell_size))
+            x1 = int(np.floor(max_x / cell_size))
+            y0 = int(np.floor(min_y / cell_size))
+            y1 = int(np.floor(max_y / cell_size))
+
+            for cx in range(x0, x1 + 1):
+                for cy in range(y0, y1 + 1):
+                    key = (cx, cy)
+                    if key not in grid:
+                        grid[key] = []
+                    grid[key].append(i)
+
+        checked = set()
+        for particle_ids in grid.values():
+            if len(particle_ids) < 2:
+                continue
+
+            for idx in range(len(particle_ids) - 1):
+                i = particle_ids[idx]
+                for jdx in range(idx + 1, len(particle_ids)):
+                    j = particle_ids[jdx]
+                    pair = (i, j) if i < j else (j, i)
+                    if pair in checked:
                         continue
-                    pair = (i, j)
-                    if pair in resolved:
+                    checked.add(pair)
+
+                    i, j = pair
+                    dp0 = prev_pos[i] - prev_pos[j]
+                    dv_step = displacements[i] - displacements[j]
+
+                    a = dv_step[0] * dv_step[0] + dv_step[1] * dv_step[1]
+                    b = 2.0 * (dp0[0] * dv_step[0] + dp0[1] * dv_step[1])
+                    c = dp0[0] * dp0[0] + dp0[1] * dp0[1] - r_sq
+
+                    collided = c <= 0.0
+                    t_collide = 0.0
+
+                    if not collided and a > eps:
+                        disc = b * b - 4.0 * a * c
+                        if disc >= 0.0:
+                            root = sqrt(disc)
+                            t_first = (-b - root) / (2.0 * a)
+                            if 0.0 <= t_first <= 1.0:
+                                collided = True
+                                t_collide = t_first
+
+                    if not collided:
+                        dp_end = self.pos[i] - self.pos[j]
+                        dist_end_sq = dp_end[0] * dp_end[0] + dp_end[1] * dp_end[1]
+                        if dist_end_sq < r_sq:
+                            collided = True
+                            t_collide = 1.0
+
+                    if not collided:
                         continue
 
-                    dp = self.pos[i] - self.pos[j]
-                    dist_sq = dp[0] * dp[0] + dp[1] * dp[1]
+                    normal = dp0 + dv_step * t_collide
+                    normal_sq = normal[0] * normal[0] + normal[1] * normal[1]
+                    if normal_sq <= eps:
+                        dp_end = self.pos[i] - self.pos[j]
+                        normal = dp_end if np.dot(dp_end, dp_end) > eps else dp0
+                        normal_sq = normal[0] * normal[0] + normal[1] * normal[1]
+                        if normal_sq <= eps:
+                            continue
 
-                    if dist_sq < r_sq and dist_sq > 1e-10:
-                        resolved.add(pair)
-                        # Equal-mass elastic collision in 2D:
-                        # v1' = v1 - dot(v1-v2, x1-x2)/|x1-x2|^2 * (x1-x2)
-                        # v2' = v2 - dot(v2-v1, x2-x1)/|x2-x1|^2 * (x2-x1)
-                        dv = self.vel[i] - self.vel[j]
-                        proj = (dv[0] * dp[0] + dv[1] * dp[1]) / dist_sq
-                        if proj > 0:  # only if approaching
-                            impulse = proj * dp
-                            self.vel[i] -= impulse
-                            self.vel[j] += impulse
+                    rel_vel = self.vel[i] - self.vel[j]
+                    proj = (rel_vel[0] * normal[0] + rel_vel[1] * normal[1]) / normal_sq
+                    if proj < 0.0:
+                        impulse = proj * normal
+                        self.vel[i] -= impulse
+                        self.vel[j] += impulse
+
+                    dp_end = self.pos[i] - self.pos[j]
+                    dist_end_sq = dp_end[0] * dp_end[0] + dp_end[1] * dp_end[1]
+                    if dist_end_sq < r_sq:
+                        dist_end = sqrt(dist_end_sq) if dist_end_sq > eps else 0.0
+                        normal_len = sqrt(normal_sq)
+                        if normal_len <= eps:
+                            continue
+                        normal_hat = normal / normal_len
+                        overlap = r - dist_end
+                        correction = 0.5 * overlap * normal_hat
+                        self.pos[i] += correction
+                        self.pos[j] -= correction
 
     def reverse(self):
         """Flip time direction. Negate all velocities."""

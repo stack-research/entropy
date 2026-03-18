@@ -122,6 +122,18 @@ class TestParticleSystem:
 
 class TestCollisions:
 
+    def test_collision_resolves_on_first_overlap_step(self):
+        s = ParticleSystem(2, (1000, 1000), 'uniform', collisions=True, collision_radius=1.0)
+        s.pos[0] = [499.0, 500.0]
+        s.pos[1] = [501.0, 500.0]
+        s.vel[0] = [1.0, 0.0]
+        s.vel[1] = [-1.0, 0.0]
+
+        s.step()
+
+        np.testing.assert_allclose(s.vel[0], [-1.0, 0.0], atol=1e-10)
+        np.testing.assert_allclose(s.vel[1], [1.0, 0.0], atol=1e-10)
+
     def test_collisions_conserve_kinetic_energy(self):
         s = ParticleSystem(100, (160, 88), 'uniform', collisions=True, collision_radius=4.0)
         ke_initial = s.kinetic_energy()
