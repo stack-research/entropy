@@ -3,6 +3,7 @@
 import sys
 import os
 import numpy as np
+from math import lgamma
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -83,6 +84,18 @@ class TestParticleSystem:
         s = ParticleSystem(500, (160, 88), 'uniform')
         norm = s.entropy_normalized()
         assert norm > 0.7
+
+    def test_entropy_max_matches_exact_balanced_occupancy(self):
+        for n_particles in (10, 65, 200, 500):
+            s = ParticleSystem(n_particles, (160, 88), 'uniform')
+            cells = s.grid_shape[0] * s.grid_shape[1]
+            q, remainder = divmod(n_particles, cells)
+            expected = (
+                lgamma(n_particles + 1)
+                - remainder * lgamma(q + 2)
+                - (cells - remainder) * lgamma(q + 1)
+            )
+            np.testing.assert_allclose(s.entropy_max(), expected, atol=1e-10)
 
     def test_temperature_positive(self):
         s = ParticleSystem(100, (160, 88), 'corner')

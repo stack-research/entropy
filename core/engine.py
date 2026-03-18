@@ -1,7 +1,7 @@
 """Statistical mechanics engine."""
 
 import numpy as np
-from math import lgamma, log, sqrt
+from math import lgamma, sqrt
 
 # Natural units: k_B = 1, m = 1
 K_B = 1.0
@@ -229,15 +229,15 @@ class ParticleSystem:
         """Maximum entropy: uniform distribution across all cells."""
         M = self.grid_shape[0] * self.grid_shape[1]
         if M == 0:
-            return 1.0
-        # S_max = k_B * ln(M^N / ...) ≈ N * ln(M) for large N uniform
-        # More precisely: S_max = k_B * [ln(N!) - M * ln((N/M)!)]
-        # For the combinatorial definition, max is when all cells have N/M particles
-        n_per_cell = self.n / M
-        if n_per_cell < 1:
-            return K_B * self.n * log(M) if M > 0 else 1.0
-        log_W_max = lgamma(self.n + 1) - M * lgamma(int(round(n_per_cell)) + 1)
-        return K_B * log_W_max if log_W_max > 0 else 1.0
+            return 0.0
+
+        q, remainder = divmod(self.n, M)
+        log_W_max = (
+            lgamma(self.n + 1)
+            - remainder * lgamma(q + 2)
+            - (M - remainder) * lgamma(q + 1)
+        )
+        return K_B * max(log_W_max, 0.0)
 
     def entropy_normalized(self):
         """S / S_max. 0 = perfect order, 1 = equilibrium."""

@@ -72,6 +72,14 @@ On reveal, the equilibrium system is labeled "backward" in [modules/arrow.py](/U
 
 #### `entropy_max()` is not the exact combinatorial maximum
 
+Status: completed on 2026-03-18
+
+Implemented:
+
+- Replaced the rounded `N / M` approximation with the exact balanced-occupancy multinomial maximum.
+- Covered both divisible and non-divisible particle counts in a regression test.
+- Verified with `python3 -m pytest -q` after the change.
+
 In [core/engine.py](/Users/macos-user/.projects/stack-research/entropy/core/engine.py#L176), `entropy_max()` rounds `N / M` and computes:
 
 `lgamma(N + 1) - M * lgamma(round(N / M) + 1)`
