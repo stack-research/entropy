@@ -8,13 +8,14 @@ K_B = 1.0
 
 
 class ParticleSystem:
-    """N non-interacting particles in a 2D box with elastic walls.
+    """N particles in a 2D box with elastic walls and optional collisions.
 
     Continuous Newtonian mechanics — time-reversible by construction.
     Entropy computed via Boltzmann counting of coarse-grained microstates.
     """
 
-    def __init__(self, n_particles, bounds, initial_config='corner', temperature=1.0):
+    def __init__(self, n_particles, bounds, initial_config='corner', temperature=1.0,
+                 collisions=False, collision_radius=3.0):
         self.n = n_particles
         self.width, self.height = bounds
         self.bounds = bounds
@@ -22,6 +23,8 @@ class ParticleSystem:
         self.time_direction = 1
         self.temperature = temperature
         self.grid_shape = (8, 8)  # coarse-graining grid for entropy
+        self.collisions = collisions
+        self.collision_radius = collision_radius
 
         self._init_positions(initial_config)
         self._init_velocities()
@@ -63,6 +66,8 @@ class ParticleSystem:
         """Advance one timestep. Vectorized."""
         self.pos += self.vel * self.dt * self.time_direction
         self._reflect_walls()
+        if self.collisions:
+            self._resolve_collisions()
 
     def _reflect_walls(self):
         # X-axis reflection
@@ -82,6 +87,63 @@ class ParticleSystem:
         mask_hi = self.pos[:, 1] >= self.height
         self.pos[mask_hi, 1] = 2 * self.height - self.pos[mask_hi, 1]
         self.vel[mask_hi, 1] = -self.vel[mask_hi, 1]
+
+    def _resolve_collisions(self):
+        """Elastic 2D collisions via spatial hashing. O(N) average case.
+
+        Equal-mass elastic collision: particles exchange velocity components
+        along the line connecting their centers. Preserves total KE and momentum.
+        """
+        r = self.collision_radius
+        cell_size = r * 2
+        if cell_size <= 0:
+            return
+
+        # Build spatial hash: map each particle to a grid cell
+        cx = (self.pos[:, 0] / cell_size).astype(int)
+        cy = (self.pos[:, 1] / cell_size).astype(int)
+
+        grid = {}
+        for i in range(self.n):
+            key = (int(cx[i]), int(cy[i]))
+            if key not in grid:
+                grid[key] = []
+            grid[key].append(i)
+
+        # Check each particle against neighbors in adjacent cells
+        resolved = set()
+        r_sq = r * r
+        for key, particles in grid.items():
+            # Gather candidates from this cell and 8 neighbors
+            neighbors = []
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    nkey = (key[0] + dx, key[1] + dy)
+                    if nkey in grid:
+                        neighbors.extend(grid[nkey])
+
+            for i in particles:
+                for j in neighbors:
+                    if j <= i:
+                        continue
+                    pair = (i, j)
+                    if pair in resolved:
+                        continue
+
+                    dp = self.pos[i] - self.pos[j]
+                    dist_sq = dp[0] * dp[0] + dp[1] * dp[1]
+
+                    if dist_sq < r_sq and dist_sq > 1e-10:
+                        resolved.add(pair)
+                        # Equal-mass elastic collision in 2D:
+                        # v1' = v1 - dot(v1-v2, x1-x2)/|x1-x2|^2 * (x1-x2)
+                        # v2' = v2 - dot(v2-v1, x2-x1)/|x2-x1|^2 * (x2-x1)
+                        dv = self.vel[i] - self.vel[j]
+                        proj = (dv[0] * dp[0] + dv[1] * dp[1]) / dist_sq
+                        if proj > 0:  # only if approaching
+                            impulse = proj * dp
+                            self.vel[i] -= impulse
+                            self.vel[j] += impulse
 
     def reverse(self):
         """Flip time direction. Negate all velocities."""

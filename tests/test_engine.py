@@ -120,6 +120,68 @@ class TestParticleSystem:
         assert pp[:, 0].max() < 160
 
 
+class TestCollisions:
+
+    def test_collisions_conserve_kinetic_energy(self):
+        s = ParticleSystem(100, (160, 88), 'uniform', collisions=True, collision_radius=4.0)
+        ke_initial = s.kinetic_energy()
+        for _ in range(500):
+            s.step()
+        ke_after = s.kinetic_energy()
+        np.testing.assert_allclose(ke_initial, ke_after, rtol=1e-6)
+
+    def test_collisions_conserve_momentum(self):
+        s = ParticleSystem(100, (160, 88), 'uniform', collisions=True, collision_radius=4.0)
+        # Momentum changes with wall reflections, so test a single collision step
+        # by placing two particles about to collide with no walls nearby
+        s2 = ParticleSystem(2, (1000, 1000), 'uniform', collisions=True, collision_radius=5.0)
+        s2.pos[0] = [500, 500]
+        s2.pos[1] = [503, 500]
+        s2.vel[0] = [2.0, 0.0]
+        s2.vel[1] = [-1.0, 0.0]
+        p_before = s2.vel.sum(axis=0).copy()
+        s2.step()
+        p_after = s2.vel.sum(axis=0)
+        np.testing.assert_allclose(p_before, p_after, atol=1e-10)
+
+    def test_collisions_thermalize_speeds(self):
+        """With collisions, a bimodal speed distribution should thermalize."""
+        s = ParticleSystem(200, (200, 200), 'uniform', collisions=True, collision_radius=4.0)
+        # Give half the particles high speed, half low
+        s.vel[:100] *= 3.0
+        s.vel[100:] *= 0.3
+        speeds_before = np.sqrt((s.vel ** 2).sum(axis=1))
+        std_before = np.std(speeds_before)
+
+        for _ in range(2000):
+            s.step()
+
+        speeds_after = np.sqrt((s.vel ** 2).sum(axis=1))
+        std_after = np.std(speeds_after)
+        # Distribution should become more uniform (lower relative spread)
+        # Not a strict test since it's statistical, but with 200 particles
+        # and 2000 steps the effect is strong
+        assert std_after < std_before
+
+    def test_particles_stay_in_bounds_with_collisions(self):
+        s = ParticleSystem(200, (160, 88), 'corner', collisions=True, collision_radius=3.0)
+        for _ in range(500):
+            s.step()
+        assert s.pos[:, 0].min() >= 0
+        assert s.pos[:, 0].max() < 160
+        assert s.pos[:, 1].min() >= 0
+        assert s.pos[:, 1].max() < 88
+
+    def test_no_collisions_when_disabled(self):
+        """Without collisions, particles with different speeds never exchange energy."""
+        s = ParticleSystem(50, (200, 200), 'uniform', collisions=False)
+        speeds_before = np.sort(np.sqrt((s.vel ** 2).sum(axis=1)))
+        for _ in range(500):
+            s.step()
+        speeds_after = np.sort(np.sqrt((s.vel ** 2).sum(axis=1)))
+        np.testing.assert_allclose(speeds_before, speeds_after, rtol=1e-10)
+
+
 class TestBrailleCanvas:
 
     def test_pixel_mapping(self):
