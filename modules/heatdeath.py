@@ -13,6 +13,7 @@ import random
 import numpy as np
 from core.engine import ParticleSystem, K_B
 from core.narrator import Narrator
+from core.terminal import require_terminal_size
 
 # Cosmological eras: (log-year threshold, name, particle fraction)
 ERAS = [
@@ -181,6 +182,12 @@ def run(stdscr):
     last_cull_tick = 0
 
     while True:
+        size_state = require_terminal_size(stdscr)
+        if size_state == 'quit':
+            break
+        if size_state != 'ok':
+            continue
+
         key = stdscr.getch()
         if key == ord('q'):
             break

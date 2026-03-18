@@ -10,6 +10,7 @@ import numpy as np
 from core.engine import ParticleSystem
 from core.renderer import BrailleCanvas, BOX_V
 from core.narrator import Narrator
+from core.terminal import require_terminal_size
 
 BACKWARD_PREP_STEPS = 240
 BACKWARD_TARGET_ENTROPY = 0.75
@@ -97,6 +98,12 @@ def run(stdscr):
     revealed = False
 
     while True:
+        size_state = require_terminal_size(stdscr)
+        if size_state == 'quit':
+            break
+        if size_state != 'ok':
+            continue
+
         key = stdscr.getch()
 
         if key == ord('q'):

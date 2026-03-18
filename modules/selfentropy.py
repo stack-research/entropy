@@ -6,9 +6,10 @@ the Landauer bound on computation. The observer cannot escape the observation.""
 import curses
 import time
 import os
-import struct
+import sys
 from math import log
 from core.narrator import Narrator
+from core.terminal import require_terminal_size
 
 K_B = 1.380649e-23  # Boltzmann constant in J/K
 T_ROOM = 300.0      # Room temperature in Kelvin
@@ -61,13 +62,21 @@ def estimate_operations(cpu_seconds, ghz=3.0):
     return int(cpu_seconds * ghz * 1e9)
 
 
+def normalize_rss_bytes(raw_rss, platform):
+    """Normalize ru_maxrss to bytes across macOS and Linux."""
+    if raw_rss <= 0:
+        return 0
+    if platform == 'darwin':
+        return int(raw_rss)
+    return int(raw_rss * 1024)
+
+
 def get_memory_bytes():
     """Get resident memory of this process."""
     try:
-        # macOS / Linux
         import resource
         usage = resource.getrusage(resource.RUSAGE_SELF)
-        return usage.ru_maxrss  # bytes on macOS, KB on Linux
+        return normalize_rss_bytes(usage.ru_maxrss, sys.platform)
     except Exception:
         return 0
 
@@ -94,6 +103,12 @@ def run(stdscr):
     rng_state = np.random.RandomState(42)
 
     while True:
+        size_state = require_terminal_size(stdscr)
+        if size_state == 'quit':
+            break
+        if size_state != 'ok':
+            continue
+
         key = stdscr.getch()
         if key == ord('q'):
             break
@@ -104,7 +119,7 @@ def run(stdscr):
         rows, cols = stdscr.getmaxyx()
 
         # Do actual computation to measure
-        data = rng_state.randint(0, 256, size=1000, dtype=np.uint8)
+        rng_state.randint(0, 256, size=1000, dtype=np.uint8)
         bits_this_tick = 8000  # 1000 bytes = 8000 bits
         total_bits_erased += bits_this_tick
 

@@ -10,6 +10,7 @@ from math import log
 from core.engine import ParticleSystem, K_B
 from core.renderer import BrailleCanvas, BRAILLE_BASE, BOX_TL, BOX_TR, BOX_BL, BOX_BR, BOX_H, BOX_V
 from core.narrator import Narrator
+from core.terminal import require_terminal_size
 
 
 def make_demon_narrator():
@@ -251,6 +252,12 @@ def run(stdscr):
     paused = False
 
     while True:
+        size_state = require_terminal_size(stdscr)
+        if size_state == 'quit':
+            break
+        if size_state != 'ok':
+            continue
+
         key = stdscr.getch()
 
         if key == ord('q'):

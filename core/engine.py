@@ -198,7 +198,7 @@ class ParticleSystem:
                         self.pos[j] -= correction
 
     def reverse(self):
-        """Flip time direction. Negate all velocities."""
+        """Flip the simulation time direction for subsequent steps."""
         self.time_direction *= -1
 
     def entropy(self):

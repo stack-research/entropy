@@ -7,6 +7,7 @@ import curses
 from core.engine import ParticleSystem
 from core.renderer import Renderer
 from core.narrator import make_box_narrator
+from core.terminal import require_terminal_size
 
 
 def run(stdscr):
@@ -33,6 +34,12 @@ def run(stdscr):
     cached_cell_counts = None
 
     while True:
+        size_state = require_terminal_size(stdscr)
+        if size_state == 'quit':
+            break
+        if size_state != 'ok':
+            continue
+
         # --- Input ---
         key = stdscr.getch()
         just_reversed = False

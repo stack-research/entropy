@@ -33,7 +33,7 @@ Toggle between micro view (individual particles as braille dots) and macro view 
 
 ### 2. Arrow of Time
 
-Two simulations side by side. One runs forward from low entropy, one runs from equilibrium. At low entropy differences, you genuinely cannot tell which is "real." As the gradient increases, the arrow becomes obvious.
+Two simulations side by side. One runs forward from low entropy, one runs backward from a higher-entropy prepared state. At low entropy differences, you genuinely cannot tell which is "real." As the gradient increases, the arrow becomes obvious.
 
 A visceral demonstration of why we remember the past but not the future.
 
@@ -112,7 +112,7 @@ make test
 
 ## Physics
 
-Particles obey continuous Newtonian mechanics with elastic wall reflections. Velocities are drawn from the Maxwell-Boltzmann distribution. Time reversal is exact — pressing `r` negates all velocities, and the system retraces its trajectory. The second law is statistical, not dynamical.
+Particles obey continuous Newtonian mechanics with elastic wall reflections. Velocities are drawn from the Maxwell-Boltzmann distribution. Time reversal is exact — pressing `r` flips the simulation's time direction, and the system retraces its trajectory. The second law is statistical, not dynamical.
 
 Entropy is computed via Boltzmann counting on a coarse-grained 8x8 grid:
 

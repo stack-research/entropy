@@ -9,6 +9,7 @@ import random
 import math
 import time
 from core.narrator import Narrator
+from core.terminal import require_terminal_size
 
 # The "brain" — a fleeting pattern that appears in noise
 BRAIN_PATTERN = [
@@ -87,6 +88,12 @@ def run(stdscr):
     approach_start = 0
 
     while True:
+        size_state = require_terminal_size(stdscr)
+        if size_state == 'quit':
+            break
+        if size_state != 'ok':
+            continue
+
         key = stdscr.getch()
         if key == ord('q'):
             break

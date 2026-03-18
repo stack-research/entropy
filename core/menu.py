@@ -2,6 +2,7 @@
 
 import curses
 import random
+from core.terminal import require_terminal_size
 
 TITLE = [
     r" ███████╗███╗   ██╗████████╗██████╗  ██████╗ ██████╗ ██╗   ██╗",
@@ -49,6 +50,12 @@ def run(stdscr):
     hint = random.choice(FOOTER_HINTS)
 
     while True:
+        size_state = require_terminal_size(stdscr, exit_hint='q quit')
+        if size_state == 'quit':
+            return None
+        if size_state != 'ok':
+            continue
+
         stdscr.erase()
         rows, cols = stdscr.getmaxyx()
 

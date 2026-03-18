@@ -120,3 +120,11 @@ That conflicts with the project expectation that it should run broadly in termin
 ## Overall
 
 The repo structure and module separation are good, and the code is readable. The main issue is that several modules currently claim stronger physical fidelity than the implementation delivers. The next refactor pass should prioritize physics correctness and module-behavior alignment before aesthetic or content expansion.
+
+## Share Readiness Follow-Up
+
+Completed on 2026-03-18:
+
+- Fixed `selfentropy` RSS reporting to normalize `ru_maxrss` to bytes across macOS and Linux.
+- Cleaned up reversal docs so they describe the actual time-direction flip used by the engine and README.
+- Added a shared small-terminal warning path and wired it through the menu and module loops so the app degrades gracefully instead of clipping unpredictably.
