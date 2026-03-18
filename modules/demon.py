@@ -107,39 +107,44 @@ class DemonSystem:
         self.info_bits += max(1.0, float(near_gate))
 
     def step(self):
+        prev_pos = self.system.pos.copy()
         # Step the underlying physics (with collisions)
         self.system.step()
         # Enforce the internal wall
-        self._enforce_wall()
+        self._enforce_wall(prev_pos)
         # Snapshot initial entropy on first step
         if self.initial_entropy is None:
             self.initial_entropy = self._two_chamber_entropy()
 
-    def _enforce_wall(self):
-        """Reflect particles off the internal dividing wall, with gate."""
+    def _enforce_wall(self, prev_pos):
+        """Reflect particles off the internal dividing wall, with gate.
+
+        Reflection is based on whether a particle crossed the wall during the
+        timestep, so fast particles cannot tunnel through a closed gate.
+        """
         pos = self.system.pos
         vel = self.system.vel
         wx = self.wall_x
 
         for i in range(self.n):
+            prev_x, prev_y = prev_pos[i]
             px, py = pos[i]
-            vx = vel[i, 0]
-
-            # Only check particles near the wall
-            if abs(px - wx) > abs(vx) + 2:
+            dx = px - prev_x
+            if abs(dx) < 1e-10:
                 continue
 
-            in_gate = self.gate_y_min <= py <= self.gate_y_max
+            crossed = ((prev_x < wx <= px) or (prev_x > wx >= px))
+            if not crossed:
+                continue
+
+            t_cross = (wx - prev_x) / dx
+            cross_y = prev_y + (py - prev_y) * t_cross
+            in_gate = self.gate_y_min <= cross_y <= self.gate_y_max
             if self.gate_open and in_gate:
                 continue  # pass through
 
-            # Reflect off internal wall
-            if vx > 0 and wx - 2 < px < wx + 2 and px >= wx:
-                pos[i, 0] = 2 * wx - px
-                vel[i, 0] = -vx
-            elif vx < 0 and wx - 2 < px < wx + 2 and px <= wx:
-                pos[i, 0] = 2 * wx - px
-                vel[i, 0] = -vx
+            pos[i, 0] = 2 * wx - px
+            vel[i, 0] = -vel[i, 0]
 
     def chamber_stats(self):
         """Return (left_count, right_count, left_temp, right_temp).

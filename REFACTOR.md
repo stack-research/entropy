@@ -27,6 +27,15 @@ This undermines the "real physics" claim and affects modules that rely on collis
 
 #### Maxwell's Demon wall allows tunneling when gate is closed
 
+Status: completed on 2026-03-18
+
+Implemented:
+
+- Switched the divider logic to detect whether a particle crossed the wall during the timestep.
+- Used the crossing point to decide whether the particle passed through the gate opening or should reflect.
+- Added regression tests for closed-gate blocking and open-gate pass-through.
+- Verified with `python3 -m pytest -q` after the change.
+
 In [modules/demon.py](/Users/macos-user/.projects/stack-research/entropy/modules/demon.py#L128), the internal wall only reflects particles if the post-step position still lies within `wall_x +/- 2`. Fast particles can step from one side of the divider to the other in a single frame and never satisfy that condition.
 
 Observed reproduction:
