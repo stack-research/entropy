@@ -8,8 +8,11 @@ the arrow becomes obvious."""
 import curses
 import numpy as np
 from core.engine import ParticleSystem
-from core.renderer import BrailleCanvas, BRAILLE_BASE, BOX_TL, BOX_TR, BOX_BL, BOX_BR, BOX_H, BOX_V
+from core.renderer import BrailleCanvas, BOX_V
 from core.narrator import Narrator
+
+BACKWARD_PREP_STEPS = 240
+BACKWARD_TARGET_ENTROPY = 0.75
 
 
 def make_arrow_narrator():
@@ -39,6 +42,23 @@ def make_arrow_narrator():
     return n
 
 
+def build_arrow_systems(bounds, n_particles=150):
+    """Create one forward system and one genuinely time-reversed system."""
+    sys_forward = ParticleSystem(n_particles, bounds, 'corner', temperature=1.0)
+    sys_backward = ParticleSystem(n_particles, bounds, 'corner', temperature=1.0)
+
+    for _ in range(BACKWARD_PREP_STEPS):
+        sys_backward.step()
+
+    extra_steps = 0
+    while sys_backward.entropy_normalized() < BACKWARD_TARGET_ENTROPY and extra_steps < 240:
+        sys_backward.step()
+        extra_steps += 1
+
+    sys_backward.reverse()
+    return sys_forward, sys_backward
+
+
 def run(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(True)
@@ -60,10 +80,7 @@ def run(stdscr):
         pw = half_cols * 2
         ph = canvas_rows * 4
 
-        # System A: starts from corner (low entropy, runs forward)
-        sys_a = ParticleSystem(150, (pw, ph), 'corner', temperature=1.0)
-        # System B: starts from uniform (high entropy, runs forward — looks like backward)
-        sys_b = ParticleSystem(150, (pw, ph), 'uniform', temperature=1.0)
+        sys_a, sys_b = build_arrow_systems((pw, ph))
 
         canvas_a = BrailleCanvas(half_cols, canvas_rows)
         canvas_b = BrailleCanvas(half_cols, canvas_rows)
@@ -123,11 +140,11 @@ def run(stdscr):
         # Labels
         if revealed:
             if swapped:
-                left_label = " EQUILIBRIUM (backward)"
+                left_label = " HIGHER ENTROPY (backward)"
                 right_label = " LOW ENTROPY (forward)"
             else:
                 left_label = " LOW ENTROPY (forward)"
-                right_label = " EQUILIBRIUM (backward)"
+                right_label = " HIGHER ENTROPY (backward)"
         else:
             left_label = " SYSTEM A"
             right_label = " SYSTEM B"

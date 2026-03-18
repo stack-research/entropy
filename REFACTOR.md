@@ -51,6 +51,16 @@ In repeated randomized checks, leakage occurred in 8 of 200 first-step runs. Tha
 
 #### Arrow of Time does not actually run one system backward
 
+Status: completed on 2026-03-18
+
+Implemented:
+
+- Added a reusable Arrow setup helper that builds one forward low-entropy system and one genuinely reversed higher-entropy system.
+- Prepared the backward system by evolving a corner state forward and then reversing its time direction.
+- Updated the reveal labels to describe the reversed higher-entropy case accurately.
+- Added tests that verify the setup includes a reversed system and that it trends back toward low entropy over the prepared timescale.
+- Verified with `python3 -m pytest -q` after the change.
+
 The module description says one simulation runs forward from low entropy and one runs backward from high entropy, but the implementation creates one low-entropy system and one equilibrium system and steps both forward.
 
 Relevant code:
