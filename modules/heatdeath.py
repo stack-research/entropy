@@ -69,6 +69,21 @@ class StarField:
 
     def _populate(self):
         self.objects = []
+        if self.rows <= 0 or self.cols <= 0:
+            return
+
+        if self.rows < 5 or self.cols < 8:
+            n_stars = random.randint(1, max(1, min(self.rows * self.cols, 8)))
+            for _ in range(n_stars):
+                self.objects.append({
+                    'x': random.randint(0, self.cols - 1),
+                    'y': random.randint(0, self.rows - 1),
+                    'brightness': random.uniform(0.1, 0.7),
+                    'char': random.choice(STAR_CHARS[:3]),
+                    'lifespan': random.uniform(0.2, 0.8),
+                })
+            return
+
         # Galaxy clusters
         n_galaxies = random.randint(4, 8)
         for _ in range(n_galaxies):

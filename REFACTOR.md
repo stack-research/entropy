@@ -95,6 +95,14 @@ Because `S/Smax` is displayed throughout the UI, this skews a core user-facing m
 
 #### Heat Death crashes on very small terminals
 
+Status: completed on 2026-03-18
+
+Implemented:
+
+- Added a tiny-terminal fallback path for `StarField` so very small dimensions render a sparse field instead of trying to place full galaxy clusters.
+- Added a regression test for the specific small sizes that previously raised `ValueError`.
+- Verified with `python3 -m pytest -q` after the change.
+
 `StarField._populate()` in [modules/heatdeath.py](/Users/macos-user/.projects/stack-research/entropy/modules/heatdeath.py#L70) uses `random.randint(3, self.cols - 4)` and similar ranges without guarding tiny terminal sizes. Small dimensions such as `(1, 1)`, `(2, 4)`, and `(3, 6)` raise `ValueError`.
 
 That conflicts with the project expectation that it should run broadly in terminal environments.
