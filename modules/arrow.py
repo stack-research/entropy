@@ -7,6 +7,7 @@ the arrow becomes obvious."""
 
 import curses
 import numpy as np
+from core.constants import SimulationParams
 from core.engine import ParticleSystem
 from core.renderer import BrailleCanvas, BOX_V
 from core.narrator import Narrator
@@ -43,10 +44,55 @@ def make_arrow_narrator():
     return n
 
 
-def build_arrow_systems(bounds, n_particles=150):
-    """Create one forward system and one genuinely time-reversed system."""
-    sys_forward = ParticleSystem(n_particles, bounds, 'corner', temperature=1.0)
-    sys_backward = ParticleSystem(n_particles, bounds, 'corner', temperature=1.0)
+def build_arrow_systems(
+    bounds,
+    n_particles=150,
+    seed=None,
+    shared_initial_state=True,
+):
+    """Create one forward system and one time-reversed system.
+
+    If ``shared_initial_state`` is True (default), both systems start from the
+    same (x, v) microstate (optional ``seed`` for reproducibility). If False,
+    two independent ``corner`` samples are used (legacy behavior).
+    """
+    if shared_initial_state:
+        if seed is not None:
+            np.random.seed(seed)
+        sys_forward = ParticleSystem(
+            n_particles,
+            bounds,
+            'corner',
+            temperature=1.0,
+            params=SimulationParams(temperature=1.0),
+        )
+        sys_backward = ParticleSystem(
+            n_particles,
+            bounds,
+            'uniform',
+            temperature=1.0,
+            params=SimulationParams(temperature=1.0),
+        )
+        sys_backward.pos = sys_forward.pos.copy()
+        sys_backward.vel = sys_forward.vel.copy()
+        sys_backward.n = sys_forward.n
+    else:
+        if seed is not None:
+            np.random.seed(seed)
+        sys_forward = ParticleSystem(
+            n_particles,
+            bounds,
+            'corner',
+            temperature=1.0,
+            params=SimulationParams(temperature=1.0),
+        )
+        sys_backward = ParticleSystem(
+            n_particles,
+            bounds,
+            'corner',
+            temperature=1.0,
+            params=SimulationParams(temperature=1.0),
+        )
 
     for _ in range(BACKWARD_PREP_STEPS):
         sys_backward.step()

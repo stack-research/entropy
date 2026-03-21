@@ -1,11 +1,7 @@
 """Tests for the physics engine."""
 
-import sys
-import os
 import numpy as np
 from math import lgamma
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.engine import ParticleSystem
 
@@ -67,13 +63,36 @@ class TestParticleSystem:
         # Should return close to initial state (float precision)
         np.testing.assert_allclose(s.pos, pos_initial, atol=1e-6)
 
+    def test_time_reversal_restores_velocity_without_walls(self):
+        """Free motion: positions and velocities round-trip under reverse()."""
+        s = ParticleSystem(1, (1000, 1000), 'uniform', collisions=False)
+        s.pos[0] = [500.0, 500.0]
+        s.vel[0] = [1.0, 0.0]
+        pos_initial = s.pos.copy()
+        vel_initial = s.vel.copy()
+        for _ in range(100):
+            s.step()
+        s.reverse()
+        for _ in range(100):
+            s.step()
+        np.testing.assert_allclose(s.pos, pos_initial, atol=1e-6)
+        np.testing.assert_allclose(s.vel, vel_initial, atol=1e-6)
+
     def test_entropy_increases_from_corner(self):
+        np.random.seed(12345)
         s = ParticleSystem(200, (160, 88), 'corner')
-        e_initial, _ = s.entropy()
+        e_initial, _ = s.configurational_entropy_spatial()
         for _ in range(200):
             s.step()
-        e_after, _ = s.entropy()
+        e_after, _ = s.configurational_entropy_spatial()
         assert e_after > e_initial
+
+    def test_entropy_alias_matches_configurational(self):
+        s = ParticleSystem(80, (160, 88), 'corner')
+        e1, c1 = s.configurational_entropy_spatial()
+        e2, c2 = s.entropy()
+        assert e1 == e2
+        np.testing.assert_array_equal(c1, c2)
 
     def test_entropy_normalized_range(self):
         s = ParticleSystem(200, (160, 88), 'corner')

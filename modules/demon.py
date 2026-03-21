@@ -7,6 +7,7 @@ Landauer's principle: the demon always loses."""
 import curses
 import numpy as np
 from math import log
+from core.constants import SimulationParams
 from core.engine import ParticleSystem, K_B
 from core.renderer import BrailleCanvas, BRAILLE_BASE, BOX_TL, BOX_TR, BOX_BL, BOX_BR, BOX_H, BOX_V
 from core.narrator import Narrator
@@ -51,6 +52,11 @@ class DemonSystem:
     Built on ParticleSystem with elastic collisions enabled so particles
     exchange energy. The demon's job is to sort fast particles into the
     right chamber and slow ones into the left — fighting thermalization.
+
+    Entropy accounting uses a left/right configurational term plus a
+    **thermal_proxy** term :math:`N k_B \\ln T` per chamber with
+    :math:`T = \\langle v^2\\rangle/2` in 2D (natural units). This tracks
+    speed sorting qualitatively; it is not the full Sackur–Tetrode entropy.
     """
 
     def __init__(self, n_particles, bounds, temperature=1.0):
@@ -70,11 +76,12 @@ class DemonSystem:
 
         # Use the real engine with collisions
         self.system = ParticleSystem(
-            n_particles, bounds,
+            n_particles,
+            bounds,
             initial_config='half',
             temperature=temperature,
             collisions=True,
-            collision_radius=3.0,
+            params=SimulationParams(temperature=temperature, collision_radius=3.0),
         )
         # Confine to left chamber initially
         self.system.pos[:, 0] = np.random.uniform(2, self.wall_x - 2, n_particles)
@@ -150,35 +157,28 @@ class DemonSystem:
     def chamber_stats(self):
         """Return (left_count, right_count, left_temp, right_temp).
 
-        Temperature from equipartition: T = <mv^2> / (d * k_B), d=2, m=1.
-        Using temperature (not avg speed) because that's what the demon
-        is actually sorting — kinetic energy, not speed.
+        2D equipartition with m=k_B=1: :math:`T = \\langle v_x^2 + v_y^2\\rangle / 2`.
         """
         left_mask = self.pos[:, 0] < self.wall_x
         right_mask = ~left_mask
         n_left = int(np.sum(left_mask))
         n_right = int(np.sum(right_mask))
 
-        # T = mean(v^2) / 2 for 2D, m=1, k_B=1
+        speeds_sq = self.vel[:, 0] ** 2 + self.vel[:, 1] ** 2
         if n_left > 0:
-            t_left = float(np.mean(self.vel[left_mask] ** 2))
+            t_left = float(np.mean(speeds_sq[left_mask]) / 2.0)
         else:
             t_left = 0.0
 
         if n_right > 0:
-            t_right = float(np.mean(self.vel[right_mask] ** 2))
+            t_right = float(np.mean(speeds_sq[right_mask]) / 2.0)
         else:
             t_right = 0.0
 
         return n_left, n_right, t_left, t_right
 
     def _two_chamber_entropy(self):
-        """Entropy of the two-chamber system.
-
-        S = S_config + S_thermal
-        S_config: Boltzmann counting of left/right particle distribution
-        S_thermal: sum of per-chamber thermal entropy from KE distribution
-        """
+        """S_config + thermal_proxy using per-chamber T = <v^2>/2 (2D, natural units)."""
         left_mask = self.pos[:, 0] < self.wall_x
         n_left = int(np.sum(left_mask))
         n_right = self.n - n_left
@@ -188,25 +188,23 @@ class DemonSystem:
         s_config = K_B * (lgamma(self.n + 1)
                           - lgamma(n_left + 1) - lgamma(n_right + 1))
 
-        # Thermal: for an ideal gas, S_thermal ~ N * k_B * ln(T) (up to constant)
-        # We track the *change* from initial state, so the constant cancels
-        speeds_sq = self.vel[:, 0]**2 + self.vel[:, 1]**2
+        speeds_sq = self.vel[:, 0] ** 2 + self.vel[:, 1] ** 2
         if n_left > 0:
-            t_left = float(np.mean(speeds_sq[left_mask]))
+            t_left = float(np.mean(speeds_sq[left_mask]) / 2.0)
         else:
             t_left = 1.0
         if n_right > 0:
-            t_right = float(np.mean(speeds_sq[~left_mask]))
+            t_right = float(np.mean(speeds_sq[~left_mask]) / 2.0)
         else:
             t_right = 1.0
 
-        s_thermal = 0.0
+        s_thermal_proxy = 0.0
         if n_left > 0 and t_left > 0:
-            s_thermal += n_left * K_B * log(t_left)
+            s_thermal_proxy += n_left * K_B * log(t_left)
         if n_right > 0 and t_right > 0:
-            s_thermal += n_right * K_B * log(t_right)
+            s_thermal_proxy += n_right * K_B * log(t_right)
 
-        return s_config + s_thermal
+        return s_config + s_thermal_proxy
 
     def entropy_reduced(self):
         """How much entropy has the demon reduced from the initial state?

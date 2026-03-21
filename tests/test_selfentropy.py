@@ -1,10 +1,5 @@
 """Tests for Self-Entropy portability helpers."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from modules.selfentropy import normalize_rss_bytes
 
 

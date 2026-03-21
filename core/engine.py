@@ -1,28 +1,63 @@
-"""Statistical mechanics engine."""
+"""Statistical mechanics engine.
+
+See :mod:`core.constants` for unit conventions and which modules report which
+entropy-related quantities.
+"""
+
+from __future__ import annotations
 
 import numpy as np
 from math import lgamma, sqrt
+from typing import Optional, Tuple
 
-# Natural units: k_B = 1, m = 1
-K_B = 1.0
+from core.constants import K_B_NATURAL, SimulationParams
+
+# Re-export for callers that imported K_B from here (natural units).
+K_B = K_B_NATURAL
+
+# Vectorized math.lgamma for occupancy arrays (fixed small length).
+_LGAMMA_VEC = np.vectorize(lgamma, otypes=[float])
 
 
 class ParticleSystem:
     """N particles in a 2D box with elastic walls and optional collisions.
 
-    Continuous Newtonian mechanics — time-reversible by construction.
-    Entropy computed via Boltzmann counting of coarse-grained microstates.
+    Continuous Newtonian mechanics. Integrator: explicit Euler with wall
+    reflection each step. When :attr:`collisions` is True, pairwise elastic
+    impulses are applied sequentially within the step; that ordering can
+    introduce small kinetic-energy drift (see :meth:`_resolve_collisions`).
+
+    **Spatial entropy** (default): :meth:`configurational_entropy_spatial` bins
+    positions onto a coarse grid and computes Boltzmann entropy
+    :math:`S = k_B \\ln(N!/\\prod_i n_i!)`. This is *not* the full single-particle
+    phase-space entropy unless you add momentum bins or another velocity model.
     """
 
-    def __init__(self, n_particles, bounds, initial_config='corner', temperature=1.0,
-                 collisions=False, collision_radius=3.0):
+    def __init__(
+        self,
+        n_particles,
+        bounds,
+        initial_config='corner',
+        temperature=1.0,
+        collisions=False,
+        collision_radius=3.0,
+        dt=1.0,
+        grid_shape: Tuple[int, int] = (8, 8),
+        params: Optional[SimulationParams] = None,
+    ):
+        if params is not None:
+            temperature = params.temperature
+            collision_radius = params.collision_radius
+            dt = params.dt
+            grid_shape = params.grid_shape
+
         self.n = n_particles
         self.width, self.height = bounds
         self.bounds = bounds
-        self.dt = 1.0
+        self.dt = dt
         self.time_direction = 1
         self.temperature = temperature
-        self.grid_shape = (8, 8)  # coarse-graining grid for entropy
+        self.grid_shape = (int(grid_shape[0]), int(grid_shape[1]))
         self.collisions = collisions
         self.collision_radius = collision_radius
 
@@ -95,6 +130,10 @@ class ParticleSystem:
         The detector uses each pair's swept relative motion over the timestep,
         so head-on impacts are handled when they occur instead of one frame late
         after particles have already crossed or perfectly overlapped.
+
+        Multiple pairs processed in one step receive impulses **sequentially**;
+        the order can break exact energy conservation for dense clusters. Tests
+        allow ~1e-6 relative KE drift for long runs with collisions enabled.
         """
         r = self.collision_radius
         if r <= 0 or self.n < 2:
@@ -198,14 +237,30 @@ class ParticleSystem:
                         self.pos[j] -= correction
 
     def reverse(self):
-        """Flip the simulation time direction for subsequent steps."""
+        """Flip the sign of the timestep used in :meth:`step`.
+
+        This implements **playback** along the same discrete trajectory: each
+        call uses ``pos += vel * dt * time_direction``. It is **not** the full
+        canonical time-reversal map :math:`(x,v,t)\\mapsto(x,-v,-t)`; for
+        wall-free motion over integer steps, positions and velocities still
+        return to their prior values after forward-then-backward stepping (see
+        tests).
+        """
         self.time_direction *= -1
 
-    def entropy(self):
-        """Boltzmann configurational entropy via coarse-grained microstate counting.
+    def configurational_entropy_spatial(self):
+        """Boltzmann entropy from coarse-grained **positions** only.
 
-        S = k_B * ln(W) where W = N! / prod(n_i!)
-        Computed in log-space via lgamma for numerical stability.
+        :math:`S = k_B \\ln W` with :math:`W = N!/\\prod_i n_i!` for occupancy
+        counts :math:`n_i` on ``grid_shape``. Momentum degrees of freedom are
+        not included; compare to a full phase-space entropy only if you extend
+        the microstate definition.
+
+        Returns
+        -------
+        S : float
+        cell_counts : ndarray
+            shape ``grid_shape`` occupancy grid.
         """
         rows, cols = self.grid_shape
         cell_w = self.width / cols
@@ -220,10 +275,16 @@ class ParticleSystem:
         cell_counts = counts.reshape((rows, cols))
 
         # S = k_B * [ln(N!) - sum(ln(n_i!))]
-        log_W = lgamma(self.n + 1) - sum(lgamma(int(c) + 1) for c in counts)
+        log_W = lgamma(self.n + 1) - float(
+            np.sum(_LGAMMA_VEC(counts.astype(np.float64) + 1.0))
+        )
         S = K_B * log_W
 
         return S, cell_counts
+
+    def entropy(self):
+        """Alias for :meth:`configurational_entropy_spatial`."""
+        return self.configurational_entropy_spatial()
 
     def entropy_max(self):
         """Maximum entropy: uniform distribution across all cells."""
@@ -240,8 +301,8 @@ class ParticleSystem:
         return K_B * max(log_W_max, 0.0)
 
     def entropy_normalized(self):
-        """S / S_max. 0 = perfect order, 1 = equilibrium."""
-        S, _ = self.entropy()
+        """S / S_max for spatial configurational entropy. 0 = order, 1 = equilibrium."""
+        S, _ = self.configurational_entropy_spatial()
         S_max = self.entropy_max()
         return min(S / S_max, 1.0) if S_max > 0 else 0.0
 

@@ -8,12 +8,11 @@ import time
 import os
 import sys
 from math import log
+from core.constants import K_B_SI, T_ROOM
 from core.narrator import Narrator
 from core.terminal import require_terminal_size
 
-K_B = 1.380649e-23  # Boltzmann constant in J/K
-T_ROOM = 300.0      # Room temperature in Kelvin
-LANDAUER_LIMIT = K_B * T_ROOM * log(2)  # ~2.85e-21 J per bit erased
+LANDAUER_LIMIT = K_B_SI * T_ROOM * log(2)  # ~2.85e-21 J per bit erased
 
 
 def make_self_narrator():

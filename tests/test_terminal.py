@@ -1,10 +1,5 @@
 """Tests for shared terminal-size guards."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from core.terminal import require_terminal_size
 
 

@@ -4,6 +4,7 @@ A particle grid simulation where you watch an ordered system dissolve
 into equilibrium. Run it backward and watch the absurdity."""
 
 import curses
+from core.constants import SimulationParams
 from core.engine import ParticleSystem
 from core.renderer import Renderer
 from core.narrator import make_box_narrator
@@ -19,6 +20,7 @@ def run(stdscr):
         bounds=(pw, ph),
         initial_config='corner',
         temperature=1.0,
+        params=SimulationParams(temperature=1.0),
     )
 
     narrator = make_box_narrator()

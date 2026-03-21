@@ -5,13 +5,15 @@ Black holes evaporate. The last photons red-shift into nothing.
 The terminal slowly dims. Text gets sparser. Eventually — nothing.
 Just a cursor blinking in void.
 
-A hidden ParticleSystem tracks real thermodynamics underneath.
-The star field is the poetry. The engine is the physics."""
+A :class:`CosmologicalToyEngine` wraps :class:`~core.engine.ParticleSystem` for
+the status line; cooling and culling are narrative layers, not Hamiltonian.
+The star field is the poetry."""
 
 import curses
 import random
 import numpy as np
-from core.engine import ParticleSystem, K_B
+from core.constants import SimulationParams
+from core.engine import ParticleSystem
 from core.narrator import Narrator
 from core.terminal import require_terminal_size
 
@@ -26,6 +28,64 @@ ERAS = [
 ]
 
 STAR_CHARS = ['*', '+', '.', '\u00b7', '\u2219', '\u2022', '\u25e6']
+
+
+class CosmologicalToyEngine:
+    """Non-Hamiltonian narrative layer for heat death.
+
+    Wraps :class:`~core.engine.ParticleSystem`. Velocity damping and random
+    particle removal break strict energy conservation and phase-space volume;
+    they are metaphor tied to cosmic-era progression. Hamiltonian integration
+    (walls, optional collisions) remains the underlying reference.
+    """
+
+    def __init__(
+        self,
+        n_particles,
+        bounds,
+        *,
+        initial_config='uniform',
+        temperature=2.0,
+        collisions=True,
+        collision_radius=3.0,
+    ):
+        self.initial_n = n_particles
+        self.system = ParticleSystem(
+            n_particles,
+            bounds,
+            initial_config=initial_config,
+            temperature=temperature,
+            collisions=collisions,
+            params=SimulationParams(
+                temperature=temperature,
+                collision_radius=collision_radius,
+            ),
+        )
+        self.cooling_factor = 0.995
+        self.cooling_interval = 10
+        self.cull_interval = 30
+        self.cooling_start_progress = 0.05
+        self.last_cull_tick = 0
+
+    def evolve_tick(self, tick, progress, current_era, eras):
+        """One Hamiltonian step plus optional cosmological damping and culling."""
+        if self.system.n > 0:
+            self.system.step()
+
+        if tick % self.cooling_interval == 0 and progress > self.cooling_start_progress:
+            self.system.vel *= self.cooling_factor
+
+        if tick % self.cull_interval == 0 and tick != self.last_cull_tick:
+            self.last_cull_tick = tick
+            _, _, target_frac = eras[current_era]
+            target_n = max(0, int(self.initial_n * target_frac))
+            if self.system.n > target_n and self.system.n > 1:
+                to_remove = min(max(1, (self.system.n - target_n) // 10), self.system.n - 1)
+                keep = np.random.choice(self.system.n, self.system.n - to_remove, replace=False)
+                keep.sort()
+                self.system.pos = self.system.pos[keep]
+                self.system.vel = self.system.vel[keep]
+                self.system.n = len(keep)
 
 
 def make_heatdeath_narrator():
@@ -165,10 +225,10 @@ def run(stdscr):
     narrator = make_heatdeath_narrator()
     field = StarField(canvas_rows, canvas_cols)
 
-    # Hidden physics engine tracking real thermodynamics
     initial_n = 300
-    engine = ParticleSystem(
-        initial_n, (canvas_cols * 2, canvas_rows * 4),
+    engine = CosmologicalToyEngine(
+        initial_n,
+        (canvas_cols * 2, canvas_rows * 4),
         initial_config='uniform',
         temperature=2.0,
         collisions=True,
@@ -179,7 +239,6 @@ def run(stdscr):
     tick = 0
     current_era = 0
     prev_era = 0
-    last_cull_tick = 0
 
     while True:
         size_state = require_terminal_size(stdscr)
@@ -196,10 +255,13 @@ def run(stdscr):
             canvas_rows = max(rows - 4, 1)
             canvas_cols = max(cols - 2, 1)
             field = StarField(canvas_rows, canvas_cols)
-            engine = ParticleSystem(
-                initial_n, (canvas_cols * 2, canvas_rows * 4),
-                initial_config='uniform', temperature=2.0,
-                collisions=True, collision_radius=3.0,
+            engine = CosmologicalToyEngine(
+                initial_n,
+                (canvas_cols * 2, canvas_rows * 4),
+                initial_config='uniform',
+                temperature=2.0,
+                collisions=True,
+                collision_radius=3.0,
             )
             tick = 0
             narrator = make_heatdeath_narrator()
@@ -215,33 +277,14 @@ def run(stdscr):
             if log_year >= threshold:
                 current_era = i
 
-        # --- Evolve the hidden engine ---
-        if engine.n > 0:
-            engine.step()
-
-        # Cool the universe
-        if tick % 10 == 0 and progress > 0.05:
-            engine.vel *= 0.995
-
-        # Cull engine particles to match era
-        if tick % 30 == 0 and tick != last_cull_tick:
-            last_cull_tick = tick
-            _, _, target_frac = ERAS[current_era]
-            target_n = max(0, int(initial_n * target_frac))
-            if engine.n > target_n and engine.n > 1:
-                to_remove = min(max(1, (engine.n - target_n) // 10), engine.n - 1)
-                keep = np.random.choice(engine.n, engine.n - to_remove, replace=False)
-                keep.sort()
-                engine.pos = engine.pos[keep]
-                engine.vel = engine.vel[keep]
-                engine.n = len(keep)
+        engine.evolve_tick(tick, progress, current_era, ERAS)
 
         # --- Evolve the visual star field ---
         field.update(progress)
 
-        # Engine stats
-        temp = engine.measured_temperature() if engine.n > 0 else 0.0
-        entropy_norm = engine.entropy_normalized() if engine.n > 1 else 1.0
+        sys = engine.system
+        temp = sys.measured_temperature() if sys.n > 0 else 0.0
+        entropy_norm = sys.entropy_normalized() if sys.n > 1 else 1.0
 
         narrator.update({
             'step': tick,
